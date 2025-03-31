@@ -53,6 +53,24 @@ class BlockGroupPlugin(Star):
             event.stop_event()
             yield event.plain_result("本群已禁用LLM功能")
 
+     @filter.command("listblocked", permission_type=filter.PermissionType.ADMIN)
+    async def list_blocked_groups(self, event: AstrMessageEvent):
+        """查询已屏蔽的群组列表"""
+        if not self.blocked_groups:
+            yield event.plain_result("当前没有群组被屏蔽")
+            return
+        
+        # 构建可读性更好的消息
+        groups_list = "\n".join(f"• {group_id}" for group_id in sorted(self.blocked_groups))
+        message = f"🚫 已屏蔽群组列表（共 {len(self.blocked_groups)} 个）：\n{groups_list}"
+        
+        # 发送富文本消息
+        yield event.chain_result([
+            Comp.Plain("已屏蔽群组列表：\n"),
+            Comp.Plain(groups_list),
+            Comp.Plain(f"\n共计 {len(self.blocked_groups)} 个群组")
+        ])
+
     @filter.event_message_type(filter.EventMessageType.GROUP_MESSAGE)
     async def check_group_message(self, event: AstrMessageEvent):
         """拦截群消息事件"""
