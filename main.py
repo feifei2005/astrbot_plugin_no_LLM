@@ -83,8 +83,8 @@ class BlockGroupPlugin(Star):
         group_id = event.get_group_id()
         if group_id and group_id in self.blocked_groups:
             # 阻止LLM请求
-            yield event.plain_result("此群组已被屏蔽，无法使用LLM功能")
-            event.stop_event()
+            req.prompt = "[BLOCKED]"  # 替换为无效内容
+            req.system_prompt = "此群组已被屏蔽"
     
     async def terminate(self):
         """插件卸载时保存数据"""
