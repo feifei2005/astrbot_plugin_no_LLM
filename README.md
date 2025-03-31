@@ -6,12 +6,9 @@ A template plugin for AstrBot plugin feature
 
 （个人使用的群聊黑名单插件，除非个人需要否则不会维护）
 
-/shield_group 123456 - 屏蔽群号123456
+/blockgroup <群号> 屏蔽指定群组
 
-/unshield_group 123456 - 解除屏蔽群号123456
-
-/list_shielded - 查看所有被屏蔽的群聊
-
+/unblockgroup <群号> 解除屏蔽
 
 # 支持
 
