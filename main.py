@@ -1,91 +1,42 @@
 from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api.star import Context, Star, register
-from typing import Set
+from astrbot.api.provider import ProviderRequest
 
-@register("astrbot_plugin_block_group", "YourName", "群聊屏蔽插件", "1.0.0", "https://github.com/your_repo")
-class BlockGroupPlugin(Star):
-    def __init__(self, context: Context):
+@register("group_block", "YourName", "屏蔽特定群聊的LLM功能", "1.0.0")
+class GroupBlockPlugin(Star):
+    def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
-        self.blocked_groups: Set[str] = set()
-        
-        # 从文件加载已屏蔽的群组
-        self.load_blocked_groups()
-    
-    def load_blocked_groups(self):
-        """从文件加载已屏蔽的群组列表"""
-        try:
-            with open("data/blocked_groups.txt", "r", encoding="utf-8") as f:
-                self.blocked_groups = set(line.strip() for line in f if line.strip())
-        except FileNotFoundError:
-            self.blocked_groups = set()
-    
-    def save_blocked_groups(self):
-        """保存屏蔽群组列表到文件"""
-        with open("data/blocked_groups.txt", "w", encoding="utf-8") as f:
-            for group_id in self.blocked_groups:
-                f.write(f"{group_id}\n")
-    
-    @filter.command("block_group", permission_type=filter.PermissionType.ADMIN)
-    async def block_group(self, event: AstrMessageEvent, group_id: str = None):
-        """屏蔽指定群组，使其无法使用LLM功能
-        
-        Args:
-            group_id (str): 要屏蔽的群组ID。如果不提供，则屏蔽当前群组。
-        """
-        if not group_id:
-            if not event.get_group_id():
-                yield event.plain_result("请在群聊中使用此命令或提供群组ID")
-                return
-            group_id = event.get_group_id()
-        
-        if group_id in self.blocked_groups:
-            yield event.plain_result(f"群组 {group_id} 已在屏蔽列表中")
-            return
-        
-        self.blocked_groups.add(group_id)
-        self.save_blocked_groups()
-        yield event.plain_result(f"已屏蔽群组 {group_id}")
-    
-    @filter.command("unblock_group", permission_type=filter.PermissionType.ADMIN)
-    async def unblock_group(self, event: AstrMessageEvent, group_id: str = None):
-        """解除屏蔽指定群组
-        
-        Args:
-            group_id (str): 要解除屏蔽的群组ID。如果不提供，则解除当前群组。
-        """
-        if not group_id:
-            if not event.get_group_id():
-                yield event.plain_result("请在群聊中使用此命令或提供群组ID")
-                return
-            group_id = event.get_group_id()
-        
-        if group_id not in self.blocked_groups:
-            yield event.plain_result(f"群组 {group_id} 不在屏蔽列表中")
-            return
-        
-        self.blocked_groups.remove(group_id)
-        self.save_blocked_groups()
-        yield event.plain_result(f"已解除屏蔽群组 {group_id}")
-    
-    @filter.command("list_blocked_groups", permission_type=filter.PermissionType.ADMIN)
-    async def list_blocked_groups(self, event: AstrMessageEvent):
-        """列出所有被屏蔽的群组"""
-        if not self.blocked_groups:
-            yield event.plain_result("当前没有群组被屏蔽")
-            return
-        
-        groups_list = "\n".join(self.blocked_groups)
-        yield event.plain_result(f"被屏蔽的群组:\n{groups_list}")
-    
+        self.config = config  # 读取配置
+        self.blocked_groups = self.config.get("blocked_groups", [])
+
+    # 拦截LLM请求
     @filter.on_llm_request()
-    async def check_blocked_group(self, event: AstrMessageEvent, req):
-        """检查群组是否被屏蔽"""
+    async def block_llm_request(self, event: AstrMessageEvent, req: ProviderRequest):
+        # 检查是否是群消息
         group_id = event.get_group_id()
-        if group_id and group_id in self.blocked_groups:
-            # 阻止LLM请求
-            req.prompt = "[BLOCKED]"  # 替换为无效内容
-            req.system_prompt = "此群组已被屏蔽"
+        if not group_id:
+            return  # 非群消息，不处理
+        
+        # 判断群ID是否在黑名单中
+        if group_id in self.blocked_groups:
+            # 终止事件传播，阻止后续LLM处理
+            event.stop_event()
+            # 可选：发送提示消息
+            await event.send("该群聊已屏蔽LLM功能！")
     
-    async def terminate(self):
-        """插件卸载时保存数据"""
-        self.save_blocked_groups()
+    # 可选：指令添加/删除屏蔽群组
+    @filter.command("block_group", alias=["屏蔽群"])
+    async def add_block_group(self, event: AstrMessageEvent, group_id: str):
+        if group_id not in self.blocked_groups:
+            self.blocked_groups.append(group_id)
+            self.config.set("blocked_groups", self.blocked_groups)
+            self.config.save_config()
+            yield event.plain_result(f"已屏蔽群组：{group_id}")
+    
+    @filter.command("unblock_group", alias=["解除屏蔽群"])
+    async def remove_block_group(self, event: AstrMessageEvent, group_id: str):
+        if group_id in self.blocked_groups:
+            self.blocked_groups.remove(group_id)
+            self.config.set("blocked_groups", self.blocked_groups)
+            self.config.save_config()
+            yield event.plain_result(f"已解除屏蔽群组：{group_id}")
